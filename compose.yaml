@@ -1,0 +1,78 @@
+name: mini-internet
+
+x-router: &router
+  image: quay.io/frrouting/frr:10.7.1
+  cap_add:
+    - NET_ADMIN
+    - NET_RAW
+    - SYS_ADMIN
+  sysctls:
+    net.ipv4.ip_forward: "1"
+    net.ipv4.conf.all.rp_filter: "0"
+    net.ipv4.conf.default.rp_filter: "0"
+  mem_limit: 256m
+  logging:
+    driver: json-file
+    options:
+      max-size: "5m"
+      max-file: "2"
+
+services:
+  isp-a:
+    <<: *router
+    hostname: isp-a
+    volumes:
+      - ./routers/isp-a/daemons:/etc/frr/daemons
+      - ./routers/isp-a/frr.conf:/etc/frr/frr.conf
+      - ./routers/isp-a/vtysh.conf:/etc/frr/vtysh.conf
+    networks:
+      ab:
+        ipv4_address: 10.200.12.2
+      ac:
+        ipv4_address: 10.200.13.2
+
+  isp-b:
+    <<: *router
+    hostname: isp-b
+    volumes:
+      - ./routers/isp-b/daemons:/etc/frr/daemons
+      - ./routers/isp-b/frr.conf:/etc/frr/frr.conf
+      - ./routers/isp-b/vtysh.conf:/etc/frr/vtysh.conf
+    networks:
+      ab:
+        ipv4_address: 10.200.12.3
+      bc:
+        ipv4_address: 10.200.23.2
+
+  isp-c:
+    <<: *router
+    hostname: isp-c
+    volumes:
+      - ./routers/isp-c/daemons:/etc/frr/daemons
+      - ./routers/isp-c/frr.conf:/etc/frr/frr.conf
+      - ./routers/isp-c/vtysh.conf:/etc/frr/vtysh.conf
+    networks:
+      ac:
+        ipv4_address: 10.200.13.3
+      bc:
+        ipv4_address: 10.200.23.3
+
+networks:
+  ab:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.200.12.0/29
+          gateway: 10.200.12.1
+  ac:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.200.13.0/29
+          gateway: 10.200.13.1
+  bc:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.200.23.0/29
+          gateway: 10.200.23.1
