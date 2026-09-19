@@ -46,6 +46,50 @@ All three routers established two BGP neighbor sessions. A learned both a direct
 
 The pings were run **after** each route change. They confirm connectivity in each state; they do not measure convergence time or packet loss during the transition. The lower reply TTL during failover is consistent with the extra router on the return path.
 
+## Timer comparison during failure
+
+The short checks above missed something important: a working backup route does not mean an interruption-free switchover. I repeated the test with a continuous ping from A's loopback to C's loopback, then disabled A's interface toward C.
+
+| A–C keepalive / hold time | Sent / received | Missing sequence numbers | Lost replies |
+|---|---|---|---|
+| 60 / 180 seconds | 298 / 122 | 32–207 | 176 |
+| 3 / 9 seconds | 48 / 41 | 23–29 | 7 |
+
+In the first run, replies stopped after sequence 31 and resumed at 208. In the second, they stopped after 22 and resumed at 30. Reply TTL changed from 64 to 63 in both runs, consistent with the extra router on the return path. Every subsequent probe shown in each run received a reply.
+
+At the default interval of roughly one probe per second, these gaps suggest an interruption of nearly three minutes versus roughly 7–8 seconds. These are two manual observations, one per setting, without synchronized failure timestamps. They do not establish exact convergence times or a guaranteed recovery time. The reported whole-run loss percentages (59% and 14%) also depend on how long the ping ran before and after the failure.
+
+### Why replies paused
+
+During the original-timer experiment, C still selected its direct route to A even after A's interface was disabled. A can detect its own interface going down immediately, while C's interface to the Docker bridge can remain up. C can therefore keep sending replies toward the failed connection until BGP detects the failure.
+
+C later selected AS path `65002 65001` through B, and replies resumed with the direct link still down. C's observed 180-second hold timer is consistent with the long interruption; the timer alone does not prove the exact session teardown trigger.
+
+### Current settings
+
+Only the A–C BGP session has been tuned:
+
+| Router | Neighbor | Saved setting |
+|---|---|---|
+| A | C's interface, 10.200.13.3 | `neighbor 10.200.13.3 timers 3 9` |
+| C | A's interface, 10.200.13.2 | `neighbor 10.200.13.2 timers 3 9` |
+
+After restarting A and C, the neighbor output confirmed an established session with a 3-second keepalive and 9-second hold time. After the shorter-timer failure test, restoring the interface made A select the direct path `65003` again. The settings are saved in commit `a98c65d`.
+
+To observe an interruption yourself, start this in one terminal before disabling the verified A–C interface from a second terminal:
+
+```bash
+docker compose exec isp-a ping -I 10.200.1.1 10.200.3.1
+```
+
+Leave the link down until replies resume. Inspect C's return route while it is down:
+
+```bash
+docker compose exec isp-c vtysh -c "show ip bgp 10.200.1.1/32"
+```
+
+Expect `65002 65001` to become best. Stop the ping with Ctrl+C to retain its summary, then restore A's interface with the recovery command below.
+
 ## Run it
 
 Requirements: Git, Docker Engine with the Compose plugin, and a Linux container environment. The initial run used an Ubuntu VM.
@@ -170,7 +214,7 @@ The configuration files remain in the repository. Use `docker compose up -d` to 
 
 ## Next experiments
 
-- Measure convergence and packet loss with a continuous ping during failure.
+- Repeat the timer comparison with timestamped probes and failure events to measure convergence more precisely.
 - Test failures on the other links.
 - Change routing policy and compare it with the default AS-path choice.
 
