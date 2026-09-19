@@ -219,3 +219,9 @@ The configuration files remain in the repository. Use `docker compose up -d` to 
 - Change routing policy and compare it with the default AS-path choice.
 
 These are planned experiments, not completed results.
+---
+
+## Related architecture notes
+
+I wrote up the engineering lessons from this lab in [BGP Failover in a Three-AS Mini Internet](https://github.com/PatienceEnoch/Cloud_Network_Architecture_Journal/blob/main/core/bgp-failover-and-timers.md).
+
