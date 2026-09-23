@@ -18,17 +18,17 @@ flowchart TD
 
 | Router | Private ASN | Loopback |
 |---|---|---|
-| ISP-A | 65001 | 10.200.1.1/32 |
-| ISP-B | 65002 | 10.200.2.1/32 |
-| ISP-C | 65003 | 10.200.3.1/32 |
+| ISP A | 65001 | 10.200.1.1/32 |
+| ISP B | 65002 | 10.200.2.1/32 |
+| ISP C | 65003 | 10.200.3.1/32 |
 
 Each loopback gives its router an address that stays up when an individual link goes down. A `/32` route identifies exactly one IPv4 address.
 
 | Link | First endpoint | Second endpoint | Docker bridge gateway |
 |---|---|---|---|
-| A–B | A: 10.200.12.2 | B: 10.200.12.3 | 10.200.12.1 |
-| A–C | A: 10.200.13.2 | C: 10.200.13.3 | 10.200.13.1 |
-| B–C | B: 10.200.23.2 | C: 10.200.23.3 | 10.200.23.1 |
+| A to B | A: 10.200.12.2 | B: 10.200.12.3 | 10.200.12.1 |
+| A to C | A: 10.200.13.2 | C: 10.200.13.3 | 10.200.13.1 |
+| B to C | B: 10.200.23.2 | C: 10.200.23.3 | 10.200.23.1 |
 
 The link subnets use `/29`. The third octet is a reminder of which routers connect: 12, 13, or 23. The .1 gateways belong to Docker's bridges; the BGP neighbors are the router endpoints.
 
@@ -39,8 +39,8 @@ Manual checks during the initial lab run:
 | Stage | A's selected AS path to C | Ping replies | Reply TTL |
 |---|---|---|---|
 | All links up | 65003 | 4/4, 0% loss | 64 |
-| A–C link disabled at A | 65002 65003 | 4/4, 0% loss | 63 |
-| A–C link restored | 65003 | 4/4, 0% loss | 64 |
+| A to C link disabled at A | 65002 65003 | 4/4, 0% loss | 63 |
+| A to C link restored | 65003 | 4/4, 0% loss | 64 |
 
 All three routers established two BGP neighbor sessions. A learned both a direct path to C's loopback and an alternative through B. With other relevant preferences equal, the shorter AS path won.
 
@@ -48,35 +48,35 @@ The pings were run **after** each route change. They confirm connectivity in eac
 
 ## Timer comparison during failure
 
-The short checks above missed something important: a working backup route does not mean an interruption-free switchover. I repeated the test with a continuous ping from A's loopback to C's loopback, then disabled A's interface toward C.
+The short checks above missed something important: a working backup route does not mean an interruption free switchover. I repeated the test with a continuous ping from A's loopback to C's loopback, then disabled A's interface toward C.
 
-| A–C keepalive / hold time | Sent / received | Missing sequence numbers | Lost replies |
+| A to C keepalive / hold time | Sent / received | Missing sequence numbers | Lost replies |
 |---|---|---|---|
-| 60 / 180 seconds | 298 / 122 | 32–207 | 176 |
-| 3 / 9 seconds | 48 / 41 | 23–29 | 7 |
+| 60 / 180 seconds | 298 / 122 | 32 to 207 | 176 |
+| 3 / 9 seconds | 48 / 41 | 23 to 29 | 7 |
 
 In the first run, replies stopped after sequence 31 and resumed at 208. In the second, they stopped after 22 and resumed at 30. Reply TTL changed from 64 to 63 in both runs, consistent with the extra router on the return path. Every subsequent probe shown in each run received a reply.
 
-At the default interval of roughly one probe per second, these gaps suggest an interruption of nearly three minutes versus roughly 7–8 seconds. These are two manual observations, one per setting, without synchronized failure timestamps. They do not establish exact convergence times or a guaranteed recovery time. The reported whole-run loss percentages (59% and 14%) also depend on how long the ping ran before and after the failure.
+At the default interval of roughly one probe per second, these gaps suggest an interruption of nearly three minutes versus roughly 7 to 8 seconds. These are two manual observations, one per setting, without synchronized failure timestamps. They do not establish exact convergence times or a guaranteed recovery time. The reported whole run loss percentages (59% and 14%) also depend on how long the ping ran before and after the failure.
 
 ### Why replies paused
 
-During the original-timer experiment, C still selected its direct route to A even after A's interface was disabled. A can detect its own interface going down immediately, while C's interface to the Docker bridge can remain up. C can therefore keep sending replies toward the failed connection until BGP detects the failure.
+During the original timer experiment, C still selected its direct route to A even after A's interface was disabled. A can detect its own interface going down immediately, while C's interface to the Docker bridge can remain up. C can therefore keep sending replies toward the failed connection until BGP detects the failure.
 
-C later selected AS path `65002 65001` through B, and replies resumed with the direct link still down. C's observed 180-second hold timer is consistent with the long interruption; the timer alone does not prove the exact session teardown trigger.
+C later selected AS path `65002 65001` through B, and replies resumed with the direct link still down. C's observed 180 second hold timer is consistent with the long interruption; the timer alone does not prove the exact session teardown trigger.
 
 ### Current settings
 
-Only the A–C BGP session has been tuned:
+Only the A to C BGP session has been tuned:
 
 | Router | Neighbor | Saved setting |
 |---|---|---|
 | A | C's interface, 10.200.13.3 | `neighbor 10.200.13.3 timers 3 9` |
 | C | A's interface, 10.200.13.2 | `neighbor 10.200.13.2 timers 3 9` |
 
-After restarting A and C, the neighbor output confirmed an established session with a 3-second keepalive and 9-second hold time. After the shorter-timer failure test, restoring the interface made A select the direct path `65003` again. The settings are saved in commit `a98c65d`.
+After restarting A and C, the neighbor output confirmed an established session with a 3 second keepalive and 9 second hold time. After the shorter timer failure test, restoring the interface made A select the direct path `65003` again. The settings are saved in commit `a98c65d`.
 
-To observe an interruption yourself, start this in one terminal before disabling the verified A–C interface from a second terminal:
+To observe an interruption yourself, start this in one terminal before disabling the verified A to C interface from a second terminal:
 
 ```bash
 docker compose exec isp-a ping -I 10.200.1.1 10.200.3.1
@@ -153,7 +153,7 @@ The destination remains C's loopback, `10.200.3.1`. Only the route to it changes
 docker compose exec isp-a ip link set eth1 up
 ```
 
-Allow the A–C session to reconnect, then repeat:
+Allow the A to C session to reconnect, then repeat:
 
 ```bash
 docker compose exec isp-a vtysh -c "show ip bgp 10.200.3.1/32"
@@ -182,9 +182,9 @@ For example, destination `10.200.3.1/32`, next hop `10.200.12.3`, and path `6500
 | `compose.yaml` | Router containers, link networks, addresses, mounts, and resource settings |
 | `routers/isp-*/daemons` | Enables bgpd and configures FRR processes |
 | `routers/isp-*/frr.conf` | Loopback address, ASN, neighbors, and route filters |
-| `routers/isp-*/vtysh.conf` | Empty CLI configuration file, mounted persistently to prevent missing-file warnings |
+| `routers/isp-*/vtysh.conf` | Empty CLI configuration file, mounted persistently to prevent missing file warnings |
 
-The image is pinned to `quay.io/frrouting/frr:10.7.1`. Each container has a 256 MiB memory limit and bounded Docker logs. IPv4 forwarding is enabled, and reverse-path filtering is disabled through the configured sysctls.
+The image is pinned to `quay.io/frrouting/frr:10.7.1`. Each container has a 256 MiB memory limit and bounded Docker logs. IPv4 forwarding is enabled, and reverse path filtering is disabled through the configured sysctls.
 
 Inbound and outbound prefix lists permit only the three exact loopback prefixes. The three Docker link networks use `internal: true`, and no host ports are published. This lab does not peer with the public internet.
 
@@ -216,12 +216,12 @@ The configuration files remain in the repository. Use `docker compose up -d` to 
 
 - Repeat the timer comparison with timestamped probes and failure events to measure convergence more precisely.
 - Test failures on the other links.
-- Change routing policy and compare it with the default AS-path choice.
+- Change routing policy and compare it with the default AS path choice.
 
 These are planned experiments, not completed results.
 ---
 
 ## Related architecture notes
 
-I wrote up the engineering lessons from this lab in [BGP Failover in a Three-AS Mini Internet](https://github.com/PatienceEnoch/Cloud_Network_Architecture_Journal/blob/main/core/bgp-failover-and-timers.md).
+I wrote up the engineering lessons from this lab in [BGP Failover in a Three AS Mini Internet](https://github.com/PatienceEnoch/Cloud_Network_Architecture_Journal/blob/main/core/bgp-failover-and-timers.md).
 
